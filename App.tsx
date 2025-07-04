@@ -1,21 +1,20 @@
-import React, {useEffect, useState, useRef} from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
-  View as RNView,
+  View,
   StyleSheet,
   TouchableOpacity,
-  Text as RNText,
+  Text,
   Image,
   Alert,
 } from 'react-native';
-
-const View = RNView; // Ensure View is correctly assigned to avoid conflicts
-import {Camera, useCameraDevices} from 'react-native-vision-camera';
-import {RNFFmpeg} from 'react-native-ffmpeg';
+import { Camera, useCameraDevices } from 'react-native-vision-camera';
+import { RNFFmpeg } from 'react-native-ffmpeg';
+import RNFS from 'react-native-fs';
 
 function App() {
-  const camera = useRef<Camera>(null)
+  const camera = useRef<Camera>(null);
   const devices = useCameraDevices();
-  const device = devices.front;
+  const device = devices.back;
 
   const [showCamera, setShowCamera] = useState(false);
   const [imageSource, setImageSource] = useState('');
@@ -25,8 +24,10 @@ function App() {
     async function getPermission() {
       const cameraPermission = await Camera.requestCameraPermission();
       const microphonePermission = await Camera.requestMicrophonePermission();
-      console.log('Camera Permission:', cameraPermission);
-      console.log('Microphone Permission:', microphonePermission);
+
+      if (cameraPermission !== 'authorized' || microphonePermission !== 'authorized') {
+        Alert.alert('Permissions Denied', 'Camera and microphone permissions are required.');
+      }
     }
     getPermission();
   }, []);
@@ -44,14 +45,12 @@ function App() {
     if (camera.current !== null) {
       await camera.current.startRecording({
         onRecordingFinished: (video) => {
-          // sebd the video to flask server
           console.log('Video recording finished:', video);
-          // Here you can send the video to your Flask server if needed
-          // For example, using fetch or axios to upload the video file
+
           const formData = new FormData();
           formData.append('video', {
             uri: video.path,
-            type: 'video/mp4', // Adjust the type based on your video format
+            type: 'video/mp4',
             name: 'video.mp4',
           });
           fetch('http://your-flask-server/upload', {
@@ -60,9 +59,7 @@ function App() {
           })
             .then(response => response.json())
             .then(data => console.log('Upload success:', data))
-            .catch(error => console.error('Upload error:', error));  
-
-
+            .catch(error => console.error('Upload error:', error));
 
           console.log('Video saved to:', video.path);
           setVideoPath(video.path);
@@ -89,7 +86,11 @@ function App() {
       return;
     }
 
-    const outputDir = `${videoPath.substring(0, videoPath.lastIndexOf('/'))}/frames`;
+    const outputDir = `${RNFS.ExternalStorageDirectoryPath}/frames`;
+    if (!(await RNFS.exists(outputDir))) {
+      await RNFS.mkdir(outputDir);
+    }
+
     const command = `-i ${videoPath} -vf fps=60 ${outputDir}/frame%d.png`;
 
     try {
@@ -103,9 +104,7 @@ function App() {
   };
 
   if (device == null) {
-    return (
-    <Text>Camera not available</Text>
-  );
+    return <Text>Camera not available</Text>;
   }
 
   return (
@@ -119,26 +118,17 @@ function App() {
             isActive={showCamera}
             photo={true}
             video={true}
-            fps={60} // Set the frame rate to 60 FPS
+            fps={60}
           />
 
           <View style={styles.buttonContainer}>
-            <TouchableOpacity
-              style={styles.camButton}
-              onPress={capturePhoto}
-            >
+            <TouchableOpacity style={styles.camButton} onPress={capturePhoto}>
               <Text style={{ color: 'white' }}>Capture Photo</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.camButton}
-              onPress={captureVideo}
-            >
+            <TouchableOpacity style={styles.camButton} onPress={captureVideo}>
               <Text style={{ color: 'white' }}>Start Video</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.camButton}
-              onPress={stopRecording}
-            >
+            <TouchableOpacity style={styles.camButton} onPress={stopRecording}>
               <Text style={{ color: 'white' }}>Stop Video</Text>
             </TouchableOpacity>
           </View>
